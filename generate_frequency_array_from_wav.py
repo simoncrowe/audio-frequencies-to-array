@@ -18,11 +18,11 @@ def generate_frame_samples(samples, sample_rate, fps):
         yield samples[frame_num * samples_per_frame: (frame_num + 1) * samples_per_frame]
 
 
-def derive_output_filepath(input_filepath):
+def derive_output_filepath(input_filepath, number_of_bins):
     base_path, filename = path.split(input_filepath)
-    name, extension = path.splitext(filename)
+    name, _ = path.splitext(filename)
     
-    new_name = f'{name}_freq_arrays{extension}'
+    new_name = f'{name}_freq_arrays_{number_of_bins}-bins.npy'
     return path.join(base_path, new_name)
 
 
@@ -30,16 +30,8 @@ def derive_output_filepath(input_filepath):
 @click.argument('input_filepath')
 @click.option('--fps', default=30, help='FPS determining how many frequency vectors per second.')
 @click.option('-n', '--number-of-bins', default=3, help='The number of frequency bins per vector.')
-@click.option(
-    '-o', 
-    '--output-filepath', 
-    default=None, 
-    help='Path to save .npy array. If none is specified, it will be based on the input.'
-)
-def generate_array(input_filepath, fps, number_of_bins, output_filepath):
-    if output_filepath is None:
-        output_filepath = derive_output_filepath(input_filepath)
-
+def generate_array(input_filepath, fps, number_of_bins):
+    output_filepath = derive_output_filepath(input_filepath, number_of_bins)
     sample_rate, samples = wavread(input_filepath)
 
     # Calcualte max "energy" (a bit like amplitude) for later scaling
