@@ -4,6 +4,8 @@ from math import floor
 import click
 import numpy as np
 from scipy.io.wavfile import read as wavread
+from scipy.signal import welch
+
 
 def aggressive_array_split(array, parts):
     # Potentially exclude some indeces to get equal bins
@@ -34,32 +36,26 @@ def generate_array(input_filepath, fps, number_of_bins):
     output_filepath = derive_output_filepath(input_filepath, number_of_bins)
     sample_rate, samples = wavread(input_filepath)
 
-    # Calcualte max "energy" (a bit like amplitude) for later scaling
-    dft_energy_array = np.abs(np.fft.fft(samples))
-    max_energy = np.max(dft_energy_array)
-
     all_bins = []
     for index, frame_samples in enumerate(generate_frame_samples(samples, sample_rate, fps)):
-        dft_energy_array = np.abs(np.fft.fft(frame_samples))
-        # Split and flip negative half of Discrete Fourier Transform array
-        # (Absolute values are more-or-less mirrored.)
-        energy_positive, energy_negative = aggressive_array_split(dft_energy_array, 2)
-        energy_negative = np.flip(energy_negative)    
-        combined_energy = energy_positive + energy_negative
-        
-        bin_arrays = aggressive_array_split(combined_energy, number_of_bins)
+        segment_size = int(frame_samples.size / number_of_bins)
+        _, spectral_density = welch(
+            frame_samples, 
+            sample_rate, 
+            nperseg=segment_size, 
+            return_onesided=True
+        )
+        print(spectral_density.shape) 
+        bin_arrays = aggressive_array_split(spectral_density, number_of_bins)
         bins = np.sum(bin_arrays, axis=1)
         all_bins.append(bins)
 
     all_bins_array = np.array(all_bins)
-    normalised_bins = all_bins / np.max(all_bins)
+    normalised_bins = all_bins_array / np.max(all_bins_array) 
     print('Normalised bins:')
     print(normalised_bins)
     print(f'Saving to {output_filepath}')
     np.save(output_filepath, normalised_bins)
-
-
-        
 
 
 if __name__ == '__main__':
