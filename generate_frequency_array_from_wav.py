@@ -20,11 +20,24 @@ def generate_frame_samples(samples, sample_rate, fps):
         yield samples[frame_num * samples_per_frame: (frame_num + 1) * samples_per_frame]
 
 
-def derive_output_filepath(input_filepath, number_of_bins, algorithm, extension):
+def derive_output_filepath(
+    input_filepath,
+    number_of_bins,
+    algorithm, 
+    smoothed,
+    smoothing_window_length,
+    smoothing_polynomial_order,
+    extension,
+):
     base_path, filename = path.split(input_filepath)
     name, _ = path.splitext(filename)
     
-    new_name = f'{name}_freq_arrays_{number_of_bins}-bins_{algorithm}.{extension}'
+    smooth_string = (
+            f'_smoothed-{smoothing_window_length}w-{smoothing_polynomial_order}p' 
+            if smoothed 
+            else ''
+    )
+    new_name = f'{name}_freq_arrays_{number_of_bins}-bins_{algorithm}{smooth_string}.{extension}'
     return path.join(base_path, new_name)
 
 
@@ -75,9 +88,43 @@ PERIODOGRAM_FUNCTION_MAP = {
     type=float,
     help='The lowest permissible maximum density for a frequency bin. Those lower are ommitted.'
 )
-def generate_array(input_filepath, fps, number_of_bins, output_format, algorithm, min_density):
+@click.option(
+    '-s',
+    '--smooth',
+    is_flag=True,
+    help='Smooth the power density signals using the Savitzky-Golay filter.'
+)
+@click.option(
+    '--smoothing-window-length',
+    default=31,
+    help='The widow length used if applying the Savitzky-Golay smoothing filter.'
+)
+@click.option(
+    '--smoothing-polynomial-order',
+    default=3,
+    help='The order of polynomial used if applying the Savitzky-Golay smoothing filter.'
+)
+def generate_array(
+    input_filepath,
+    fps,
+    number_of_bins,
+    output_format,
+    algorithm,
+    min_density,
+    smooth,
+    smoothing_window_length,
+    smoothing_polynomial_order
+):
     periodogram_function = PERIODOGRAM_FUNCTION_MAP[algorithm]
-    output_filepath = derive_output_filepath(input_filepath, number_of_bins, algorithm, output_format.lower())
+    output_filepath = derive_output_filepath(
+        input_filepath,
+        number_of_bins,
+        algorithm,
+        smooth,
+        smoothing_window_length,
+        smoothing_polynomial_order,
+        output_format.lower()
+    )
     sample_rate, samples = wavfile.read(input_filepath)
 
     all_bins = []
@@ -93,6 +140,15 @@ def generate_array(input_filepath, fps, number_of_bins, output_format, algorithm
         all_bins.append(bins)
 
     all_bins_array = np.array(all_bins)
+ 
+    if smooth:
+        all_bins_array = signal.savgol_filter(
+            all_bins_array,
+            smoothing_window_length,
+            smoothing_polynomial_order,
+            axis=0
+        )
+
     normalised_bins = all_bins_array / np.max(all_bins_array) 
     pruned_bins = normalised_bins[:, np.max(normalised_bins, axis=0) >= min_density]
     print(f'Pruned {normalised_bins.shape[1]} bins down to {pruned_bins.shape[1]}')
